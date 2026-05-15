@@ -1,7 +1,12 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
+import path from "node:path";
 import manifestRule from "../lib/rules/validateManifest.js";
 
 const ruleTester = new RuleTester();
+const communityPluginsJsonPath = path.join(
+    process.cwd(),
+    "tests/fixtures/community-plugins.json",
+);
 
 ruleTester.run("validate-manifest", manifestRule, {
     valid: [
@@ -75,8 +80,45 @@ ruleTester.run("validate-manifest", manifestRule, {
                     "isDesktopOnly": false
                 }`,
         },
+        {
+            name: "existing plugin id from community plugin list is accepted",
+            filename: "manifest.json",
+            options: [
+                {
+                    communityPluginsJsonPath,
+                },
+            ],
+            code: `{
+                    "id": "obsidian-git",
+                    "name": "Git",
+                    "author": "Me",
+                    "version": "1.0.0",
+                    "minAppVersion": "1.0.0",
+                    "description": "Track vault changes with Git.",
+                    "isDesktopOnly": false
+                }`,
+        },
     ],
     invalid: [
+        {
+            name: "existing plugin id is forbidden without community plugin list",
+            filename: "manifest.json",
+            code: `{
+                    "id": "obsidian-git",
+                    "name": "Git",
+                    "author": "Me",
+                    "version": "1.0.0",
+                    "minAppVersion": "1.0.0",
+                    "description": "Track vault changes with Git.",
+                    "isDesktopOnly": false
+                }`,
+            errors: [
+                {
+                    messageId: "noForbiddenWords",
+                    data: { word: "obsidian", key: "id" },
+                },
+            ],
+        },
         {
             name: "forbidden word 'plugin' in id, name, and description",
             filename: "manifest.json",

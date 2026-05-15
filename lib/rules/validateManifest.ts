@@ -1,4 +1,5 @@
 import { TSESTree, ESLintUtils } from "@typescript-eslint/utils";
+import fs from "node:fs";
 import path from "node:path";
 
 const ruleCreator = ESLintUtils.RuleCreator(
@@ -22,6 +23,58 @@ const OPTIONAL_SCHEMA = {
 };
 
 const FORBIDDEN_WORDS = ["obsidian", "plugin"];
+
+type Options = [{ communityPluginsJsonPath?: string }?];
+type MessageIds =
+    | "missingKey"
+    | "invalidType"
+    | "disallowedKey"
+    | "duplicateKey"
+    | "invalidFundingUrl"
+    | "emptyFundingUrlObject"
+    | "mustBeRootObject"
+    | "noForbiddenWords"
+    | "descriptionFormat";
+
+const EMPTY_PLUGIN_IDS: ReadonlySet<string> = new Set();
+const communityPluginIdsByPath = new Map<string, ReadonlySet<string>>();
+
+function loadCommunityPluginIds(
+    communityPluginsJsonPath: string | undefined,
+    cwd: string,
+): ReadonlySet<string> {
+    if (!communityPluginsJsonPath) {
+        return EMPTY_PLUGIN_IDS;
+    }
+
+    const resolvedPath = path.resolve(cwd, communityPluginsJsonPath);
+    const cached = communityPluginIdsByPath.get(resolvedPath);
+    if (cached) {
+        return cached;
+    }
+
+    const plugins = JSON.parse(
+        fs.readFileSync(resolvedPath, "utf8"),
+    ) as unknown;
+    if (!Array.isArray(plugins)) {
+        throw new Error(
+            `${communityPluginsJsonPath} must contain a community plugin array.`,
+        );
+    }
+
+    const ids = new Set(
+        plugins
+            .map((plugin) => {
+                if (typeof plugin !== "object" || plugin === null) {
+                    return undefined;
+                }
+                return (plugin as { id?: unknown }).id;
+            })
+            .filter((id): id is string => typeof id === "string"),
+    );
+    communityPluginIdsByPath.set(resolvedPath, ids);
+    return ids;
+}
 
 function hasForbiddenWords(str: string): [boolean, string] {
     const forbiddenWordsFound = new Set<string>();
@@ -47,7 +100,7 @@ function getAstNodeType(node: TSESTree.Node): string {
     return "unknown";
 }
 
-export default ruleCreator({
+export default ruleCreator<Options, MessageIds>({
     name: "validate-manifest",
     meta: {
         type: "problem" as const,
@@ -56,7 +109,19 @@ export default ruleCreator({
                 "Validate the structure of manifest.json for Obsidian plugins.",
             url: "https://docs.obsidian.md/Reference/Manifest",
         },
-        schema: [],
+        schema: [
+            {
+                type: "object",
+                properties: {
+                    communityPluginsJsonPath: {
+                        type: "string",
+                        description:
+                            "Path to a community-plugins.json file whose IDs are allowed for manifest ID compatibility.",
+                    },
+                },
+                additionalProperties: false,
+            },
+        ],
         messages: {
             missingKey:
                 "The manifest is missing the required '{{key}}' property.",
@@ -76,13 +141,18 @@ export default ruleCreator({
                 "The 'description' property should be concise and follow the submission requirements.",
         },
     },
-    defaultOptions: [],
+    defaultOptions: [{}],
     create(context) {
         const filename = context.physicalFilename;
         if (!path.basename(filename).endsWith("manifest.json")) {
             return {};
         }
 
+        const options = context.options[0] || {};
+        const preExistingPluginIds = loadCommunityPluginIds(
+            options.communityPluginsJsonPath,
+            context.getCwd(),
+        );
         const requiredKeys = BASE_SCHEMA;
         const allAllowedKeys = { ...requiredKeys, ...OPTIONAL_SCHEMA };
 
@@ -243,6 +313,13 @@ export default ruleCreator({
                                 key === "description" ||
                                 key === "id")
                         ) {
+                            if (
+                                key === "id" &&
+                                preExistingPluginIds.has(valueNode.value)
+                            ) {
+                                continue;
+                            }
+
                             context.report({
                                 node: valueNode,
                                 messageId: "noForbiddenWords",
