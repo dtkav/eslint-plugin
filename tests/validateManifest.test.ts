@@ -75,6 +75,19 @@ ruleTester.run("validate-manifest", manifestRule, {
                     "isDesktopOnly": false
                 }`,
         },
+        {
+            name: "existing plugin id from snapshot is accepted",
+            filename: "manifest.json",
+            code: `{
+                    "id": "obsidian-git",
+                    "name": "Git",
+                    "author": "Me",
+                    "version": "1.0.0",
+                    "minAppVersion": "1.0.0",
+                    "description": "Track vault changes with Git.",
+                    "isDesktopOnly": false
+                }`,
+        },
     ],
     invalid: [
         {

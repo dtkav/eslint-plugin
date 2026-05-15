@@ -1,5 +1,6 @@
 import { TSESTree, ESLintUtils } from "@typescript-eslint/utils";
 import path from "node:path";
+import { PRE_EXISTING_PLUGIN_IDS } from "../data/preExistingPluginIds.js";
 
 const ruleCreator = ESLintUtils.RuleCreator(
     (name) =>
@@ -243,6 +244,13 @@ export default ruleCreator({
                                 key === "description" ||
                                 key === "id")
                         ) {
+                            if (
+                                key === "id" &&
+                                PRE_EXISTING_PLUGIN_IDS.has(valueNode.value)
+                            ) {
+                                continue;
+                            }
+
                             context.report({
                                 node: valueNode,
                                 messageId: "noForbiddenWords",
